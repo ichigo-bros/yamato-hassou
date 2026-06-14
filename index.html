@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>発送リスト → ヤマトB2クラウドCSV</title>
+<style>
+  :root { --p:#c0392b; --p2:#e74c3c; --bg:#fffafa; --line:#eee; --ok:#27ae60; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif; margin:0; background:var(--bg); color:#333; line-height:1.6; }
+  header { background:var(--p); color:#fff; padding:14px 16px; position:sticky; top:0; z-index:10; }
+  header h1 { font-size:1.1rem; margin:0; }
+  header p { margin:2px 0 0; font-size:.75rem; opacity:.85; }
+  main { max-width:760px; margin:0 auto; padding:16px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  h2 { font-size:1rem; margin:0 0 12px; color:var(--p); display:flex; align-items:center; gap:6px; }
+  label { display:block; font-size:.8rem; font-weight:600; margin:10px 0 4px; }
+  input,select,textarea { width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-size:16px; font-family:inherit; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  .row > div { flex:1; min-width:120px; }
+  button { font-family:inherit; font-size:.9rem; font-weight:700; border:none; border-radius:8px; padding:11px 14px; cursor:pointer; }
+  .btn-p { background:var(--p2); color:#fff; }
+  .btn-p:active { background:var(--p); }
+  .btn-g { background:#eee; color:#444; }
+  .btn-ok { background:var(--ok); color:#fff; }
+  .btn-sm { padding:6px 10px; font-size:.78rem; }
+  .picker { display:flex; gap:8px; align-items:flex-end; }
+  .picker select { flex:1; }
+  .item-name { display:flex; gap:8px; }
+  .item-name button { flex:1; background:#fdecea; color:var(--p); border:2px solid #f5c6c0; }
+  .item-name button.sel { background:var(--p2); color:#fff; border-color:var(--p2); }
+  table { width:100%; border-collapse:collapse; font-size:.82rem; }
+  th,td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:.72rem; color:#888; }
+  .badge { display:inline-block; font-size:.68rem; padding:1px 7px; border-radius:10px; color:#fff; }
+  .b-cool { background:#2980b9; } .b-frz { background:#16a085; }
+  .empty { text-align:center; color:#aaa; padding:24px 0; font-size:.85rem; }
+  .muted { font-size:.75rem; color:#999; margin-top:6px; }
+  .req { color:#c0392b; font-size:.62rem; font-weight:700; margin-left:5px; border:1px solid #f5c6c0; border-radius:4px; padding:0 4px; vertical-align:middle; }
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .del { color:#c0392b; background:none; border:none; cursor:pointer; font-size:1rem; }
+  details summary { cursor:pointer; font-size:.8rem; color:#888; }
+  .save-line { display:flex; align-items:center; gap:6px; margin-top:8px; font-size:.78rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🍓 発送リスト → ヤマトB2クラウドCSV</h1>
+  <p>注文をまとめて入力 → CSV書き出し → B2クラウドに取込で一括発行</p>
+</header>
+<main>
+
+  <!-- 連携設定 -->
+  <div class="card">
+    <details id="setBox">
+      <summary>⚙️ B2クラウド連携設定（最初に1回だけ入力）</summary>
+      <p class="muted" style="margin-top:10px;">送り状の「請求先」です。B2クラウドの「請求先情報の確認」で確認できます。ここで入れた番号は<b>この端末のブラウザ内だけ</b>に保存され、公開ページには含まれません。</p>
+      <div class="row">
+        <div><label>請求先顧客コード<span class="req">必須</span></label><input id="billcode" inputmode="numeric"></div>
+        <div style="flex:0 0 150px"><label>運賃管理番号<span class="req">必須</span></label><input id="billmgmt" inputmode="numeric" value="01"></div>
+      </div>
+      <button class="btn-g btn-sm" style="margin-top:8px" onclick="saveSettings()">設定を保存</button>
+    </details>
+  </div>
+
+  <!-- 入力フォーム -->
+  <div class="card">
+    <h2>① 発送を1件追加</h2>
+
+    <label>品名</label>
+    <div class="item-name" id="itemBtns">
+      <button type="button" data-item="いちご" class="sel">いちご（冷蔵）</button>
+      <button type="button" data-item="冷凍いちご">冷凍いちご（冷凍）</button>
+    </div>
+
+    <div class="row">
+      <div><label>出荷予定日（発送日）<span class="req">必須</span></label><input id="sdate" type="date"></div>
+      <div><label>お届け予定日（任意）</label><input id="ddate" type="date"></div>
+      <div style="flex:0 0 84px"><label>個数</label><input id="qty" type="number" min="1" value="1"></div>
+    </div>
+    <div class="row">
+      <div><label>荷扱い1（全件に適用）</label><input id="nimotsu1" value="ナマモノ"></div>
+      <div><label>荷扱い2（全件に適用）</label><input id="nimotsu2" value="天地無用"></div>
+    </div>
+
+    <!-- 依頼主 -->
+    <h2 style="margin-top:18px;">送り主（ご依頼主）</h2>
+    <div class="picker">
+      <div style="flex:1">
+        <label>保存済みから選ぶ</label>
+        <select id="senderSel"><option value="">― 新規入力 ―</option></select>
+      </div>
+      <button type="button" class="btn-g btn-sm" onclick="clearSender()">クリア</button>
+    </div>
+    <div class="row"><div><label>名前<span class="req">必須</span></label><input id="s_name"></div><div><label>電話<span class="req">必須</span></label><input id="s_tel" inputmode="tel"></div></div>
+    <div class="row"><div style="flex:0 0 120px"><label>郵便番号<span class="req">必須</span></label><input id="s_zip" inputmode="numeric"></div><div><label>住所<span class="req">必須</span></label><input id="s_addr"></div></div>
+    <label>建物名・その他（任意）</label><input id="s_bldg">
+    <div class="save-line"><label style="margin:0"><input type="checkbox" id="s_save" style="width:auto"> この送り主を住所録に保存</label></div>
+
+    <!-- 届け先 -->
+    <h2 style="margin-top:18px;">お届け先</h2>
+    <div class="picker">
+      <div style="flex:1">
+        <label>保存済みから選ぶ</label>
+        <select id="recipSel"><option value="">― 新規入力 ―</option></select>
+      </div>
+      <button type="button" class="btn-g btn-sm" onclick="clearRecip()">クリア</button>
+    </div>
+    <div class="row"><div><label>名前<span class="req">必須</span></label><input id="r_name"></div><div><label>電話<span class="req">必須</span></label><input id="r_tel" inputmode="tel"></div></div>
+    <div class="row"><div style="flex:0 0 120px"><label>郵便番号<span class="req">必須</span></label><input id="r_zip" inputmode="numeric"></div><div><label>住所<span class="req">必須</span></label><input id="r_addr"></div></div>
+    <label>建物名・その他（任意）</label><input id="r_bldg">
+    <div class="save-line"><label style="margin:0"><input type="checkbox" id="r_save" style="width:auto" checked> このお届け先を住所録に保存</label></div>
+
+    <div class="toolbar">
+      <button class="btn-p" style="flex:1" onclick="addRow()">＋ 発送リストに追加</button>
+    </div>
+  </div>
+
+  <!-- リスト -->
+  <div class="card">
+    <h2>② 発送リスト <span id="count" class="muted"></span></h2>
+    <div id="listWrap"></div>
+    <div class="toolbar">
+      <button class="btn-ok" style="flex:1" onclick="exportCSV()">📄 B2クラウド用CSVを書き出す</button>
+      <button class="btn-g" onclick="clearList()">リストを空にする</button>
+    </div>
+    <p class="muted">書き出したCSVをB2クラウドの「外部データから発行」で取り込みます。初回だけ列の紐付け設定が必要です。</p>
+  </div>
+
+  <!-- データ管理 -->
+  <div class="card">
+    <details>
+      <summary>住所録・データのバックアップ / 復元</summary>
+      <p class="muted" style="margin-top:10px;">⚠️ データはこのブラウザ内に保存されます。機種変更や別ブラウザに移すときはバックアップを。</p>
+      <div class="toolbar">
+        <button class="btn-g btn-sm" onclick="backup()">⬇ バックアップ書き出し</button>
+        <label class="btn-g btn-sm" style="cursor:pointer">⬆ バックアップ復元<input type="file" accept=".json" onchange="restore(event)" hidden></label>
+      </div>
+      <p class="muted" id="abInfo"></p>
+    </details>
+  </div>
+
+</main>
+
+<script>
+const LS = { senders:'yh_senders', recips:'yh_recips', list:'yh_list' };
+const load = k => JSON.parse(localStorage.getItem(k) || '[]');
+const save = (k,v) => localStorage.setItem(k, JSON.stringify(v));
+let senders = load(LS.senders), recips = load(LS.recips), list = load(LS.list);
+let curItem = 'いちご';
+
+// 品名ボタン
+document.querySelectorAll('#itemBtns button').forEach(b=>{
+  b.onclick = ()=>{ curItem=b.dataset.item; document.querySelectorAll('#itemBtns button').forEach(x=>x.classList.toggle('sel',x===b)); };
+});
+
+function fillSelect(sel, arr){
+  sel.innerHTML = '<option value="">― 新規入力 ―</option>' + arr.map((p,i)=>`<option value="${i}">${p.name}（${p.addr||''}）</option>`).join('');
+}
+function refreshSelects(){ fillSelect(senderSel,senders); fillSelect(recipSel,recips);
+  abInfo.textContent = `送り主 ${senders.length}件 / お届け先 ${recips.length}件 を保存中`; }
+
+senderSel.onchange = ()=>{ const p=senders[senderSel.value]; if(!p)return; s_name.value=p.name; s_tel.value=p.tel; s_zip.value=p.zip; s_addr.value=p.addr; s_bldg.value=p.bldg||''; s_save.checked=false; };
+recipSel.onchange = ()=>{ const p=recips[recipSel.value]; if(!p)return; r_name.value=p.name; r_tel.value=p.tel; r_zip.value=p.zip; r_addr.value=p.addr; r_bldg.value=p.bldg||''; r_save.checked=false; };
+function clearSender(){ senderSel.value=''; [s_name,s_tel,s_zip,s_addr,s_bldg].forEach(e=>e.value=''); }
+function clearRecip(){ recipSel.value=''; [r_name,r_tel,r_zip,r_addr,r_bldg].forEach(e=>e.value=''); }
+
+function addRow(){
+  const r = {
+    item: curItem,
+    cool: curItem==='冷凍いちご' ? 1 : 2,   // テンプレ定義: 1=クール冷凍 / 2=クール冷蔵
+    qty: qty.value||1,
+    sdate: sdate.value,
+    ddate: ddate.value,
+    tag1: nimotsu1.value.trim(),
+    tag2: nimotsu2.value.trim(),
+    s:{ name:s_name.value.trim(), tel:s_tel.value.trim(), zip:s_zip.value.trim(), addr:s_addr.value.trim(), bldg:s_bldg.value.trim() },
+    r:{ name:r_name.value.trim(), tel:r_tel.value.trim(), zip:r_zip.value.trim(), addr:r_addr.value.trim(), bldg:r_bldg.value.trim() }
+  };
+  if(!r.sdate){ alert('出荷予定日（発送日）を入れてください'); return; }
+  if(!r.r.name || !r.r.tel || !r.r.zip || !r.r.addr){ alert('お届け先の【名前・電話・郵便番号・住所】はすべて必須です'); return; }
+  if(!r.s.name || !r.s.tel || !r.s.zip || !r.s.addr){ alert('送り主の【名前・電話・郵便番号・住所】はすべて必須です'); return; }
+  // 住所録保存
+  if(s_save.checked && !senders.some(p=>p.name===r.s.name && p.addr===r.s.addr)){ senders.push(r.s); save(LS.senders,senders); }
+  if(r_save.checked && !recips.some(p=>p.name===r.r.name && p.addr===r.r.addr)){ recips.push(r.r); save(LS.recips,recips); }
+  list.push(r); save(LS.list,list);
+  // フォーム軽くリセット（送り主・出荷予定日は連続発送で残す）
+  clearRecip(); qty.value=1; ddate.value='';
+  refreshSelects(); render();
+}
+
+function render(){
+  count.textContent = list.length ? `（${list.length}件）` : '';
+  if(!list.length){ listWrap.innerHTML='<div class="empty">まだ発送がありません</div>'; return; }
+  listWrap.innerHTML = '<table><thead><tr><th>品名</th><th>お届け先</th><th>送り主</th><th>個</th><th></th></tr></thead><tbody>'+
+    list.map((r,i)=>`<tr>
+      <td>${r.item}<br><span class="badge ${r.item==='冷凍いちご'?'b-frz':'b-cool'}">${r.item==='冷凍いちご'?'冷凍':'冷蔵'}</span></td>
+      <td><b>${r.r.name}</b><br><span class="muted">${r.r.addr}</span></td>
+      <td>${r.s.name}</td>
+      <td>${r.qty}</td>
+      <td><button class="del" onclick="delRow(${i})">✕</button></td>
+    </tr>`).join('') + '</tbody></table>';
+}
+function delRow(i){ list.splice(i,1); save(LS.list,list); render(); }
+function clearList(){ if(list.length && confirm('発送リストを空にしますか？（住所録は残ります）')){ list=[]; save(LS.list,list); render(); } }
+
+function csvField(v){ v=(v??'').toString(); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+const fmtDate = v => v ? v.replace(/-/g,'/') : '';   // YYYY-MM-DD → YYYY/MM/DD
+// B2クラウド「外部データ取り込み基本レイアウト」の1〜28列目と完全一致させる
+const HEADER = ['お客様管理番号','送り状種類','クール区分','伝票番号','出荷予定日','お届け予定日','配達時間帯','お届け先コード','お届け先電話番号','お届け先電話番号枝番','お届け先郵便番号','お届け先住所','お届け先アパートマンション名','お届け先会社・部門１','お届け先会社・部門２','お届け先名','お届け先名(ｶﾅ)','敬称','ご依頼主コード','ご依頼主電話番号','ご依頼主電話番号枝番','ご依頼主郵便番号','ご依頼主住所','ご依頼主アパートマンション','ご依頼主名','ご依頼主名(ｶﾅ)','品名コード１','品名１','品名コード２','品名２','荷扱い１','荷扱い２','記事','ｺﾚｸﾄ代金引換額（税込)','内消費税額等','止置き','営業所コード','発行枚数','個数口表示フラグ','請求先顧客コード','請求先分類コード','運賃管理番号'];
+function exportCSV(){
+  if(!list.length){ alert('発送リストが空です'); return; }
+  const BILL = { code:billcode.value.trim(), mgmt:billmgmt.value.trim() };
+  if(!BILL.code || !BILL.mgmt){ alert('先に「⚙️ B2クラウド連携設定」で請求先顧客コードと運賃管理番号を入力してください'); setBox.open=true; setBox.scrollIntoView(); return; }
+  const rows = list.map((r,i)=>[
+    String(i+1).padStart(4,'0'),  // 1 お客様管理番号
+    '0',                          // 2 送り状種類（0=発払い）
+    r.cool,                       // 3 クール区分（1=冷凍 / 2=冷蔵）
+    '',                           // 4 伝票番号（B2が付与）
+    fmtDate(r.sdate),             // 5 出荷予定日
+    fmtDate(r.ddate),             // 6 お届け予定日
+    '',                           // 7 配達時間帯
+    '',                           // 8 お届け先コード
+    r.r.tel,                      // 9 お届け先電話番号
+    '',                           // 10 お届け先電話番号枝番
+    r.r.zip,                      // 11 お届け先郵便番号
+    r.r.addr,                     // 12 お届け先住所
+    r.r.bldg,                     // 13 お届け先アパートマンション名
+    '', '',                       // 14-15 会社・部門
+    r.r.name,                     // 16 お届け先名
+    '', '',                       // 17-18 カナ・敬称
+    '',                           // 19 ご依頼主コード
+    r.s.tel,                      // 20 ご依頼主電話番号
+    '',                           // 21 枝番
+    r.s.zip,                      // 22 ご依頼主郵便番号
+    r.s.addr,                     // 23 ご依頼主住所
+    r.s.bldg,                     // 24 ご依頼主アパートマンション
+    r.s.name,                     // 25 ご依頼主名
+    '',                           // 26 カナ
+    '',                           // 27 品名コード１
+    r.item,                       // 28 品名１
+    '',                           // 29 品名コード２
+    '',                           // 30 品名２
+    r.tag1,                       // 31 荷扱い１
+    r.tag2,                       // 32 荷扱い２
+    '',                           // 33 記事
+    '', '',                       // 34-35 コレクト額・消費税
+    '',                           // 36 止置き
+    '',                           // 37 営業所コード
+    '',                           // 38 発行枚数
+    '',                           // 39 個数口表示フラグ
+    BILL.code,                    // 40 請求先顧客コード
+    '',                           // 41 請求先分類コード
+    BILL.mgmt                     // 42 運賃管理番号
+  ]);
+  const csv = [HEADER,...rows].map(row=>row.map(csvField).join(',')).join('\r\n');
+  download(csv);   // Shift_JISで書き出し
+}
+function download(csv){
+  const fname = `yamato_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.csv`;
+  // encoding-japaneseでShift_JIS化（読み込めたら）、ダメならUTF-8(BOM)
+  if(window.Encoding){
+    const sjis = Encoding.convert(Encoding.stringToCode(csv), {to:'SJIS', from:'UNICODE'});
+    const blob = new Blob([new Uint8Array(sjis)], {type:'text/csv'});
+    saveBlob(blob, fname);
+  } else {
+    const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+    saveBlob(blob, fname);
+  }
+}
+function saveBlob(blob, name){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href);
+}
+
+function backup(){
+  const data={senders,recips,list,_v:1};
+  saveBlob(new Blob([JSON.stringify(data)],{type:'application/json'}), `hassou_backup_${Date.now()}.json`);
+}
+function restore(e){
+  const f=e.target.files[0]; if(!f)return; const rd=new FileReader();
+  rd.onload=()=>{ try{ const d=JSON.parse(rd.result); senders=d.senders||[]; recips=d.recips||[]; list=d.list||[];
+    save(LS.senders,senders); save(LS.recips,recips); save(LS.list,list); refreshSelects(); render(); alert('復元しました'); }
+    catch{ alert('ファイルを読めませんでした'); } };
+  rd.readAsText(f);
+}
+
+// 連携設定（請求先）の保存・読み込み（この端末内のみ）
+function saveSettings(){
+  localStorage.setItem('yh_settings', JSON.stringify({code:billcode.value.trim(), mgmt:billmgmt.value.trim()}));
+  alert('連携設定を保存しました');
+}
+(function(){ const st=JSON.parse(localStorage.getItem('yh_settings')||'{}');
+  if(st.code) billcode.value=st.code; if(st.mgmt) billmgmt.value=st.mgmt;
+  if(!st.code) setBox.open=true;   // 未設定なら開いて促す
+})();
+
+// 出荷予定日の初期値＝今日（ローカル時刻）
+sdate.value = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+refreshSelects(); render();
+</script>
+<!-- Shift_JIS変換ライブラリ（取込文字化け対策・オフライン時はUTF-8で書き出し） -->
+<script src="https://cdn.jsdelivr.net/npm/encoding-japanese@2.2.0/encoding.min.js"></script>
+</body>
+</html>
