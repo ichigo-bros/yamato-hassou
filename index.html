@@ -75,7 +75,10 @@
 
     <div class="row">
       <div><label>出荷予定日（発送日）<span class="req">必須</span></label><input id="sdate" type="date"></div>
-      <div><label>お届け予定日（任意）</label><input id="ddate" type="date"></div>
+      <div><label>お届け予定日</label>
+        <input id="ddate" type="date" disabled>
+        <label class="muted" style="display:flex;align-items:center;gap:4px;margin-top:4px;"><input type="checkbox" id="saitan" checked style="width:auto" onchange="ddate.disabled=this.checked"> 最短日にする（日付指定不要）</label>
+      </div>
       <div style="flex:0 0 84px"><label>個数</label><input id="qty" type="number" min="1" value="1"></div>
     </div>
     <div class="row">
@@ -171,7 +174,7 @@ function addRow(){
     cool: curItem==='冷凍いちご' ? 1 : 2,   // テンプレ定義: 1=クール冷凍 / 2=クール冷蔵
     qty: qty.value||1,
     sdate: sdate.value,
-    ddate: ddate.value,
+    ddate: saitan.checked ? '最短日' : ddate.value,
     tag1: nimotsu1.value.trim(),
     tag2: nimotsu2.value.trim(),
     s:{ name:s_name.value.trim(), tel:s_tel.value.trim(), zip:s_zip.value.trim(), addr:s_addr.value.trim(), bldg:s_bldg.value.trim() },
@@ -248,7 +251,7 @@ function exportCSV(){
     '',                           // 36 止置き
     '',                           // 37 営業所コード
     '',                           // 38 発行枚数
-    '',                           // 39 個数口表示フラグ
+    '1',                          // 39 個数口表示フラグ（1=印字する→1個口を表示）
     BILL.code,                    // 40 請求先顧客コード
     '',                           // 41 請求先分類コード
     BILL.mgmt                     // 42 運賃管理番号
