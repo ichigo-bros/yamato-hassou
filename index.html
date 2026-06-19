@@ -276,13 +276,19 @@ function saveBlob(blob, name){
 }
 
 function backup(){
-  const data={senders,recips,list,_v:1};
+  const settings=JSON.parse(localStorage.getItem('yh_settings')||'{}');
+  const data={senders,recips,list,settings,_v:2};
   saveBlob(new Blob([JSON.stringify(data)],{type:'application/json'}), `hassou_backup_${Date.now()}.json`);
 }
 function restore(e){
   const f=e.target.files[0]; if(!f)return; const rd=new FileReader();
-  rd.onload=()=>{ try{ const d=JSON.parse(rd.result); senders=d.senders||[]; recips=d.recips||[]; list=d.list||[];
-    save(LS.senders,senders); save(LS.recips,recips); save(LS.list,list); refreshSelects(); render(); alert('復元しました'); }
+  rd.onload=()=>{ try{ const d=JSON.parse(rd.result);
+    if(d.senders) { senders=d.senders; save(LS.senders,senders); }
+    if(d.recips)  { recips=d.recips;   save(LS.recips,recips); }
+    if(Array.isArray(d.list)) { list=d.list; save(LS.list,list); }
+    if(d.settings){ localStorage.setItem('yh_settings',JSON.stringify(d.settings));
+      if(d.settings.code) billcode.value=d.settings.code; if(d.settings.mgmt) billmgmt.value=d.settings.mgmt; if(d.settings.code) setBox.open=false; }
+    refreshSelects(); render(); alert('復元しました'); }
     catch{ alert('ファイルを読めませんでした'); } };
   rd.readAsText(f);
 }
