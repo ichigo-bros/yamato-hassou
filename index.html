@@ -79,7 +79,7 @@
         <input id="ddate" type="date" disabled>
         <label class="muted" style="display:flex;align-items:center;gap:4px;margin-top:4px;"><input type="checkbox" id="saitan" checked style="width:auto" onchange="ddate.disabled=this.checked"> 最短日にする（日付指定不要）</label>
       </div>
-      <div style="flex:0 0 84px"><label>個数</label><input id="qty" type="number" min="1" value="1"></div>
+      <div style="flex:0 0 116px"><label>箱数（伝票枚数）</label><input id="qty" type="number" min="1" value="1"></div>
     </div>
     <div class="row">
       <div><label>荷扱い1（全件に適用）</label><input id="nimotsu1" value="ナマモノ"></div>
@@ -215,8 +215,9 @@ function exportCSV(){
   if(!list.length){ alert('発送リストが空です'); return; }
   const BILL = { code:billcode.value.trim(), mgmt:billmgmt.value.trim() };
   if(!BILL.code || !BILL.mgmt){ alert('先に「⚙️ B2クラウド連携設定」で請求先顧客コードと運賃管理番号を入力してください'); setBox.open=true; setBox.scrollIntoView(); return; }
-  const rows = list.map((r,i)=>[
-    String(i+1).padStart(4,'0'),  // 1 お客様管理番号
+  let _no=0;
+  const rows = list.flatMap((r)=> Array.from({length: Math.max(1, parseInt(r.qty)||1)}, ()=>[
+    String(++_no).padStart(4,'0'),  // 1 お客様管理番号（箱ごとに連番）
     '0',                          // 2 送り状種類（0=発払い）
     r.cool,                       // 3 クール区分（1=冷凍 / 2=冷蔵）
     '',                           // 4 伝票番号（B2が付与）
@@ -255,7 +256,7 @@ function exportCSV(){
     BILL.code,                    // 40 請求先顧客コード
     '',                           // 41 請求先分類コード
     BILL.mgmt                     // 42 運賃管理番号
-  ]);
+  ]));
   const csv = [HEADER,...rows].map(row=>row.map(csvField).join(',')).join('\r\n');
   download(csv);   // Shift_JISで書き出し
 }
