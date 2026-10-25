@@ -79,7 +79,7 @@
         <input id="ddate" type="date" disabled>
         <label class="muted" style="display:flex;align-items:center;gap:4px;margin-top:4px;"><input type="checkbox" id="saitan" checked style="width:auto" onchange="ddate.disabled=this.checked"> 最短日にする（日付指定不要）</label>
       </div>
-      <div style="flex:0 0 116px"><label>箱数（伝票枚数）</label><input id="qty" type="number" min="1" value="1"></div>
+      <div style="flex:0 0 116px"><label>箱数（伝票枚数）</label><input id="qty" type="number" min="1" max="1000" step="1" value="1"></div>
     </div>
     <div class="row">
       <div><label>荷扱い1（全件に適用）</label><input id="nimotsu1" value="ナマモノ"></div>
@@ -145,11 +145,25 @@
 
 </main>
 
+<script src="data-safety.js"></script>
 <script>
 const LS = { senders:'yh_senders', recips:'yh_recips', list:'yh_list' };
-const load = k => JSON.parse(localStorage.getItem(k) || '[]');
-const save = (k,v) => localStorage.setItem(k, JSON.stringify(v));
-let senders = load(LS.senders), recips = load(LS.recips), list = load(LS.list);
+function person(p) {
+  SafeData.requireValue(SafeData.record(p), '住所録');
+  const out={}; for(const key of ['name','tel','zip','addr','bldg'])out[key]=SafeData.text(p[key],key,key==='bldg');
+  for(const key of ['name','tel','zip','addr'])SafeData.requireValue(out[key].trim().length>0,key); return out;
+}
+function boxCount(v) { const n=typeof v==='string' && v.trim()!==''?Number(v):v; return SafeData.number(n,'箱数（1〜1000の整数）',1,1000,true); }
+function shipment(r) {
+  SafeData.requireValue(SafeData.record(r),'発送');
+  SafeData.requireValue(r.cool===1 || r.cool===2,'クール区分');
+  return {item:SafeData.text(r.item,'品名'),cool:r.cool,qty:boxCount(r.qty),sdate:SafeData.date(r.sdate,'出荷日'),ddate:r.ddate==='最短日'?'最短日':SafeData.date(r.ddate,'お届け日',true),tag1:SafeData.text(r.tag1,'荷扱い1',true),tag2:SafeData.text(r.tag2,'荷扱い2',true),s:person(r.s),r:person(r.r)};
+}
+function settingsValue(s) { SafeData.requireValue(SafeData.record(s),'設定'); return {code:SafeData.text(s.code,'顧客コード',true),mgmt:SafeData.text(s.mgmt,'運賃管理番号',true)}; }
+const save = (k,v) => SafeData.persist({[k]:v});
+let senders = SafeData.load(LS.senders,[],v=>SafeData.list(v,person,'送り主'));
+let recips = SafeData.load(LS.recips,[],v=>SafeData.list(v,person,'お届け先'));
+let list = SafeData.load(LS.list,[],v=>SafeData.list(v,shipment,'発送リスト'));
 let curItem = 'いちご';
 
 // 品名ボタン
@@ -158,7 +172,8 @@ document.querySelectorAll('#itemBtns button').forEach(b=>{
 });
 
 function fillSelect(sel, arr){
-  sel.innerHTML = '<option value="">― 新規入力 ―</option>' + arr.map((p,i)=>`<option value="${i}">${p.name}（${p.addr||''}）</option>`).join('');
+  sel.replaceChildren(new Option('― 新規入力 ―',''));
+  arr.forEach((p,i)=>sel.add(new Option(p.name+'（'+p.addr+'）',String(i))));
 }
 function refreshSelects(){ fillSelect(senderSel,senders); fillSelect(recipSel,recips);
   abInfo.textContent = `送り主 ${senders.length}件 / お届け先 ${recips.length}件 を保存中`; }
@@ -169,10 +184,12 @@ function clearSender(){ senderSel.value=''; [s_name,s_tel,s_zip,s_addr,s_bldg].f
 function clearRecip(){ recipSel.value=''; [r_name,r_tel,r_zip,r_addr,r_bldg].forEach(e=>e.value=''); }
 
 function addRow(){
+  if(!SafeData.writable())return;
+  let boxes;try { boxes=boxCount(qty.value); }catch(err){alert(err.message);qty.focus();return;}
   const r = {
     item: curItem,
     cool: curItem==='冷凍いちご' ? 1 : 2,   // テンプレ定義: 1=クール冷凍 / 2=クール冷蔵
-    qty: qty.value||1,
+    qty: boxes,
     sdate: sdate.value,
     ddate: saitan.checked ? '最短日' : ddate.value,
     tag1: nimotsu1.value.trim(),
@@ -183,24 +200,27 @@ function addRow(){
   if(!r.sdate){ alert('出荷予定日（発送日）を入れてください'); return; }
   if(!r.r.name || !r.r.tel || !r.r.zip || !r.r.addr){ alert('お届け先の【名前・電話・郵便番号・住所】はすべて必須です'); return; }
   if(!r.s.name || !r.s.tel || !r.s.zip || !r.s.addr){ alert('送り主の【名前・電話・郵便番号・住所】はすべて必須です'); return; }
-  // 住所録保存
-  if(s_save.checked && !senders.some(p=>p.name===r.s.name && p.addr===r.s.addr)){ senders.push(r.s); save(LS.senders,senders); }
-  if(r_save.checked && !recips.some(p=>p.name===r.r.name && p.addr===r.r.addr)){ recips.push(r.r); save(LS.recips,recips); }
-  list.push(r); save(LS.list,list);
+  const nextSenders=[...senders], nextRecips=[...recips], nextList=[...list,r];
+  if(s_save.checked && !senders.some(p=>p.name===r.s.name && p.addr===r.s.addr))nextSenders.push(r.s);
+  if(r_save.checked && !recips.some(p=>p.name===r.r.name && p.addr===r.r.addr))nextRecips.push(r.r);
+  try { shipment(r); SafeData.persist({[LS.senders]:nextSenders,[LS.recips]:nextRecips,[LS.list]:nextList}); }
+  catch(err){alert('保存できませんでした：'+err.message);return;}
+  senders=nextSenders;recips=nextRecips;list=nextList;
   // フォーム軽くリセット（送り主・出荷予定日は連続発送で残す）
   clearRecip(); qty.value=1; ddate.value='';
   refreshSelects(); render();
 }
 
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function render(){
   count.textContent = list.length ? `（${list.length}件）` : '';
   if(!list.length){ listWrap.innerHTML='<div class="empty">まだ発送がありません</div>'; return; }
   listWrap.innerHTML = '<table><thead><tr><th>品名</th><th>お届け先</th><th>送り主</th><th>個</th><th></th></tr></thead><tbody>'+
     list.map((r,i)=>`<tr>
-      <td>${r.item}<br><span class="badge ${r.item==='冷凍いちご'?'b-frz':'b-cool'}">${r.item==='冷凍いちご'?'冷凍':'冷蔵'}</span></td>
-      <td><b>${r.r.name}</b><br><span class="muted">${r.r.addr}</span></td>
-      <td>${r.s.name}</td>
-      <td>${r.qty}</td>
+      <td>${escapeHtml(r.item)}<br><span class="badge ${r.item==='冷凍いちご'?'b-frz':'b-cool'}">${r.item==='冷凍いちご'?'冷凍':'冷蔵'}</span></td>
+      <td><b>${escapeHtml(r.r.name)}</b><br><span class="muted">${escapeHtml(r.r.addr)}</span></td>
+      <td>${escapeHtml(r.s.name)}</td>
+      <td>${escapeHtml(r.qty)}</td>
       <td><button class="del" onclick="delRow(${i})">✕</button></td>
     </tr>`).join('') + '</tbody></table>';
 }
@@ -215,8 +235,9 @@ function exportCSV(){
   if(!list.length){ alert('発送リストが空です'); return; }
   const BILL = { code:billcode.value.trim(), mgmt:billmgmt.value.trim() };
   if(!BILL.code || !BILL.mgmt){ alert('先に「⚙️ B2クラウド連携設定」で請求先顧客コードと運賃管理番号を入力してください'); setBox.open=true; setBox.scrollIntoView(); return; }
+  try { list.forEach(shipment); }catch(err){alert(err.message);return;}
   let _no=0;
-  const rows = list.flatMap((r)=> Array.from({length: Math.max(1, parseInt(r.qty)||1)}, ()=>[
+  const rows = list.flatMap((r)=> Array.from({length: boxCount(r.qty)}, ()=>[
     String(++_no).padStart(4,'0'),  // 1 お客様管理番号（箱ごとに連番）
     '0',                          // 2 送り状種類（0=発払い）
     r.cool,                       // 3 クール区分（1=冷凍 / 2=冷蔵）
@@ -283,23 +304,28 @@ function backup(){
 }
 function restore(e){
   const f=e.target.files[0]; if(!f)return; const rd=new FileReader();
-  rd.onload=()=>{ try{ const d=JSON.parse(rd.result);
-    if(d.senders) { senders=d.senders; save(LS.senders,senders); }
-    if(d.recips)  { recips=d.recips;   save(LS.recips,recips); }
-    if(Array.isArray(d.list)) { list=d.list; save(LS.list,list); }
-    if(d.settings){ localStorage.setItem('yh_settings',JSON.stringify(d.settings));
-      if(d.settings.code) billcode.value=d.settings.code; if(d.settings.mgmt) billmgmt.value=d.settings.mgmt; if(d.settings.code) setBox.open=false; }
-    refreshSelects(); render(); alert('復元しました'); }
-    catch{ alert('ファイルを読めませんでした'); } };
-  rd.readAsText(f);
+  rd.onload=()=>{ try{
+    const d=JSON.parse(rd.result);SafeData.requireValue(SafeData.record(d),'バックアップ');
+    const nextSenders=SafeData.list(d.senders,person,'送り主');
+    const nextRecips=SafeData.list(d.recips,person,'お届け先');
+    const nextList=SafeData.list(d.list,shipment,'発送リスト');
+    const nextSettings=settingsValue(d.settings ?? {code:billcode.value,mgmt:billmgmt.value});
+    if(!confirm('住所録と発送リストをバックアップの内容で置き換えますか？'))return;
+    SafeData.persist({[LS.senders]:nextSenders,[LS.recips]:nextRecips,[LS.list]:nextList,yh_settings:nextSettings},true);
+    senders=nextSenders;recips=nextRecips;list=nextList;
+    billcode.value=nextSettings.code;billmgmt.value=nextSettings.mgmt;setBox.open=!nextSettings.code;
+    refreshSelects();render();alert('復元しました');
+  }catch(err){alert('復元できませんでした。元のデータは変更していません：'+err.message);} };
+  rd.readAsText(f);e.target.value='';
 }
 
 // 連携設定（請求先）の保存・読み込み（この端末内のみ）
 function saveSettings(){
-  localStorage.setItem('yh_settings', JSON.stringify({code:billcode.value.trim(), mgmt:billmgmt.value.trim()}));
+  if(!SafeData.writable())return;
+  SafeData.persist({yh_settings:{code:billcode.value.trim(), mgmt:billmgmt.value.trim()}});
   alert('連携設定を保存しました');
 }
-(function(){ const st=JSON.parse(localStorage.getItem('yh_settings')||'{}');
+(function(){ const st=SafeData.load('yh_settings',{},settingsValue);
   if(st.code) billcode.value=st.code; if(st.mgmt) billmgmt.value=st.mgmt;
   if(!st.code) setBox.open=true;   // 未設定なら開いて促す
 })();
